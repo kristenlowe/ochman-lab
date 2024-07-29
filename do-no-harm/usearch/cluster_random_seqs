@@ -1,0 +1,48 @@
+# start with directory of reverse sequences
+
+# convert each fq to fasta
+for i in $(ls *2.fq | cut -f 1 -d '.')
+do
+grep --no-group-separator -B1 "^+" "${i}.fq" | awk '/+/{gsub(/\+/, ">sequence_" (++count))}1' > "${i}.faa"
+done
+
+# replace “sequence_” string in fasta files with file name
+for file in *.faa
+do
+file_name=$(basename "$file" .faa)
+sed -i -e "s/>sequence_/>${file_name}_/g" "$file"
+done
+
+# take first 50 bases after flank
+for file in *.faa
+do
+awk 'BEGIN { RS = ">" ; FS = "\n" } NR > 1 { header = $1; sequence = $2; idx = index(sequence, "GTTACTTAGTTA"); if (idx) { print ">" header "\n" substr(sequence, idx + 12, 50) } }' "$file" > temp && mv temp "$file"
+done
+
+# pool the sequences from all experiments together
+cat *.faa > pooled_sequences.faa
+
+# cut the file to feed into usearch (32-bit / 4 Gb limit)
+awk 'BEGIN {n_seq=0; file_counter=0;} /^>/ {if(n_seq%10000==0 && n_seq>0){file_counter++;} file=sprintf("split_%d.faa",file_counter); print > file; n_seq++; next;} {print > file;}' pooled_sequences.faa
+
+# sort sequences by length
+for file in split_*.faa
+do
+./usearch -sortbylength "$file" -fastaout "${file%.faa}_sorted.fasta" -minseqlength 50
+done
+
+# test usearch on file 0
+./usearch -cluster_smallmem split_0_sorted.fasta -id 0.9 -centroids split_0_sorted_centroids.faa -uc split_0_sorted_clusters.uc
+
+# run cluster_smallmem (in 9 different screens)
+for file in *_sorted.fasta
+do
+./usearch -cluster_smallmem "$file" -id 0.9 -centroids "${file%.fasta}_centroids.faa" -uc "${file%.fasta}_clusters.uc"
+done
+
+# concatenate .uc files
+cat split_*_sorted_clusters.uc > all_clusters.uc
+
+# remove all singletons
+awk '$1 == "C" && $3 > 1' all_clusters.uc > filtered_clusters.uc
+

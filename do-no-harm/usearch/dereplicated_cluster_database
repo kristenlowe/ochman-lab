@@ -1,0 +1,58 @@
+# start with directory of reverse sequences
+
+# convert each fq to fasta
+for i in $(ls *2.fq | cut -f 1 -d '.')
+do
+grep --no-group-separator -B1 "^+" "${i}.fq" | awk '/+/{gsub(/\+/, ">sequence_" (++count))}1' > "${i}.faa"
+done
+
+# replace “sequence_” string in fasta files with file name
+for file in *.faa
+do
+file_name=$(basename "$file" .faa)
+sed -i -e "s/>sequence_/>${file_name}_/g" "$file"
+done
+
+# take first 50 bases after flank
+for file in *.faa
+do
+awk 'BEGIN { RS = ">" ; FS = "\n" } NR > 1 { header = $1; sequence = $2; idx = index(sequence, "GTTACTTAGTTA"); if (idx) { print ">" header "\n" substr(sequence, idx + 12, 50) } }' "$file" > temp && mv temp "$file"
+done
+
+# sort sequences by length / prep for later usearch runs
+for file in *_2.faa
+do
+./usearch -sortbylength "$file" -fastaout "${file%.faa}_sorted.fasta" -minseqlength 50
+done
+
+# first round of dereplication:
+# In the first round, the nucleotide sequences were sorted alphabetically, and the
+# -fastx_uniques option was used to remove duplicate sequences, keeping only one sequence
+# of each type in the database while keeping track of the number of total sequences of each
+# type with the -sizeout option
+
+for file in *_sorted.fasta
+do
+./usearch -fastx_uniques "$file" -fastaout "${file%_sorted.fasta}_uniques.fasta" -sizeout -minuniquesize 2
+done
+
+# second round of dereplicaion:
+# In the second round, all files with singletons removed
+# were merged into a single file of all amplicon sequences available, sorted, and de-replicated
+# again using the same exact-match method.
+
+# pool the sequences from all experiments together
+cat *_uniques.fasta > pooled_sequences.faa
+
+# sort pooled file
+./usearch -sortbylength pooled_sequences.faa -fastaout pooled_sequences_sorted.faa -minseqlength 50
+
+# dereplicate pooled file (no splitting, unlike tautz)
+./usearch -fastx_uniques pooled_sequences_sorted.faa -fastaout pooled_uniques.faa -sizeout -minuniquesize 2
+
+# a third dereplication round using a clustering approach
+# without splitting the file, the cluster_smallmem took ~ 1 hour to run
+./usearch -cluster_smallmem pooled_uniques.faa -id 0.9 -centroids pooled_centroids.faa -uc pooled_clusters.uc
+
+# remove all singletons from uc file
+awk '$1 == "C" && $3 > 1' pooled_clusters.uc > filtered_clusters.uc
