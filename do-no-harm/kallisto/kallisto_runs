@@ -1,0 +1,44 @@
+# make sequence count table with the alignment tool Kallisto
+
+# location
+/stor/scratch/Ochman/kristen/2024_spring/kallisto_runs
+
+# build an index from database file (sequence_database.fasta)
+for k in 7 11 15 19 23 27 31
+do
+index_file="sequence_database_${k}.kidx"
+kallisto index -i "$index_file" sequence_database.fasta -k $k
+done
+
+# run the quantification algorithm
+# this creates 74 * 7 directories
+# each directory has an abundance.tsv file with counts in the 4th column
+for k in 7 11 15 19 23 27 31
+do
+    for file in *.fq
+    do
+        kallisto quant -i sequence_database_${k}.kidx -o ${file%.fq}_run${k} --single -l 150 -s 1 -t 36 $file
+    done
+done
+
+# Goal: for each kmer, create a counts table (should have 7 counts tables by the end)
+# I have many directories in my current directory labeled {sample}_run{k}.
+# Each directory contains a file called "abundance.tsv"
+# In each of these tsv files, I am interested in the values contained in the 4th column.
+# Compile this column from each sample into a run{kmer}_counts_table.csv 
+# kallisto_counts_table.py is the python script that makes these counts tables
+# make the script executable
+chmod +x kallisto_counts_table.py
+
+# execute the script
+./kallisto_counts_table.py
+
+# note: run7_counts_table.csv created a table of zeros, so it wasn't used for further analyses
+
+# run23 produced the most significant results after DESeq2 analyses.
+# running again with kmer 23 and -l 200 -s 20 (default values)
+for file in *.fq; do
+    kallisto quant -i sequence_database_23.kidx -o ${file%.fq}_run23_default --single -l 200 -s 20 -t 36 $file
+done
+
+# modified kallisto_counts_table.py and ran it to get run23_default_counts_table.csv
