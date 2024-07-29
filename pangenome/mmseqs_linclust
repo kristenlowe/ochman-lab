@@ -1,0 +1,36 @@
+# create pangenome presence-absence table
+
+# from Touchan et al. 2020.
+# their workflow:
+# Pangenomes were built by clustering homologous proteins into families
+# determined the lists of putative homologs between pairs of genomes with MMseqs2 v.3.0 [107]
+# kept only hits with at least 80% identity and an alignment covering at least 80% of both proteins
+# Homologs proteins were then clustered by single-linkage (Linclust) [108]
+# We computed independently the pan-genome of each dataset, i.e., ECOR
+# Each pan-genome was then used to compute a matrix of presence-absence of gene families
+
+# start with directory of protein.faa files
+# contains ECOR strains 1 - 72.
+# excludes strains 7 and 23.
+# Phylogroup A strains ECOR 7 and ECOR 23 were found to cluster within phylogroups B1 and B2, respectively.
+cp /stor/work/Ochman/hassan/newgene_workspace/Ecoli/ECOR2018/ECOR2018_proteins/ECOR_*_protein.faa /stor/scratch/Ochman/kristen/pangenome/pres_abs_table
+
+# identify homologous proteins using MMSeqs2
+# create combined database
+cat ECOR_*_protein.faa > ECOR_protein_db.faa
+mmseqs createdb ECOR_protein_db.faa ECOR_protein_db
+
+# search for homologs
+# Time for processing: 0h 3m 20s 939ms
+mmseqs search ECOR_protein_db ECOR_protein_db resultDB tmp --min-seq-id 0.8 -c 0.8 --cov-mode 1
+
+# convert to human readable format
+mmseqs convertalis ECOR_protein_db ECOR_protein_db resultDB resultDB.m8
+
+# use the single-linkage clustering method (Linclust in MMseqs2) to cluster homologous proteins into families based on the search results
+mmseqs linclust ECOR_protein_db clusterDB tmp --min-seq-id 0.8 -c 0.8 --cov-mode 1
+mmseqs createtsv ECOR_protein_db ECOR_protein_db clusterDB clusters.tsv
+
+# create presence-absence matrix
+python3 create_pres_abs_table.py
+
