@@ -1,0 +1,29 @@
+---
+title: "prot_pipe"
+output: html_document
+date: "2023-07-18"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# load packages
+library(readxl)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+```
+
+
+```{r}
+prot_pipe |>
+  ggplot(aes(x = `Raw File`, y = `Protein Counts`, fill = `Method`)) +
+  geom_bar(position="dodge", stat="identity") +
+  labs(title = "Effects of Percolator on FDR Detection for Mass Spec") +
+  theme(axis.text.x = element_text(angle = 90, size = 4))
+```
+
+

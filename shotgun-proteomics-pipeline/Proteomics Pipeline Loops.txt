@@ -1,0 +1,68 @@
+Proteomics Pipeline loops
+
+for i in $(ls *.raw | cut -f 1 -d '.')
+do
+docker run -it --rm -e WINEDEBUG=-all -v `pwd`:`pwd` -w `pwd` chambm/pwiz-skyline-i-agree-to-the-vendor-licenses wine msconvert "$i".raw --mgf --outfile "$i".mgf
+done
+
+for i in $(ls *.mgf | cut -f 1 -d '.')
+do
+time java -Xmx3500M -jar MSGFPlus.jar -s "$i".mgf -d REL606_allCDS_proteins_linear.faa -inst 1 -t 10ppm -ti 0,1 -mod mods.txt -ntt 2 -tda 1 -maxMissedCleavages 2 -addFeatures 1 -thread 72 -o "$i".mzid
+done
+
+for i in $(ls *.mgf | cut -f 1 -d '.')
+do
+time java -Xmx3500M -jar MSGFPlus.jar -s "$i".mgf -d REL606_allCDS_proteins_linear.faa -inst 1 -t 10ppm -ti 0,1 -mod mods.txt -ntt 2 -tda 0 -maxMissedCleavages 2 -addFeatures 1 -thread 72 -o "$i"_forward.mzid
+done
+
+for i in $(ls *.mgf | cut -f 1 -d '.')
+do
+time java -Xmx3500M -jar MSGFPlus.jar -s "$i".mgf -d REL606_allCDS_proteins_linear_reversed.faa -inst 1 -t 10ppm -ti 0,1 -mod mods.txt -ntt 2 -tda 0 -maxMissedCleavages 2 -addFeatures 1 -thread 72 -o "$i"_reversed.mzid
+done
+
+for i in $(ls *.mzid | cut -f 1 -d '.')
+do
+java -Xmx3500M -cp MSGFPlus.jar edu.ucsd.msjava.ui.MzIDToTsv -i "$i".mzid -o "$i".tsv
+done
+
+for i in $(ls *.mzID | cut -f 1-4 -d '_')
+do
+msgf2pin "$i"_forward.mzID "$i"_reversed.mzID -o "$i".pin
+done
+
+for i in $(ls *.pin | cut -f 1 -d '.')
+do
+percolator "$i".pin -J "$i".pout > "$i"_perc.tsv
+done
+
+
+
+
+File parsing:
+
+without percolator:
+
+for i in $(ls *.tsv | cut -f 1 -d '.')
+do
+awk -F'\t' '$16 < 0.01 { print $11 }' "$i".tsv > "$i"_proteins.tsv
+done
+
+with percolator:
+
+for i in $(ls *_perc.tsv | cut -f 1 -d '.')
+do
+awk -F'\t' '$3 < 0.01 { print $6 }' "$i".tsv > "$i"_proteins.tsv
+done
+
+
+Reporting protein counts:
+
+for i in $(ls *_proteins.tsv)
+do
+sed -E 's/\([^()]*\)//g' "$i" | awk '!seen[$0]++' | sort | wc -l
+done
+
+for i in $(ls *_perc_proteins.tsv)
+do
+sed -E 's/\([^()]*\)//g' "$i" | awk '!seen[$0]++' | sort | wc -l
+done
